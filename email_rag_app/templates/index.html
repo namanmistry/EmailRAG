@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Email RAG Chat | Your Smart Email Assistant</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <!-- Add these lines to your HTML file -->
+<script src="https://cdn.jsdelivr.net/npm/markdown-it@13.0.1/dist/markdown-it.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/markdown-it-attrs@4.1.6/markdown-it-attrs.min.js"></script>
+</head>
+<body>
+    <div class="app-container">
+        <!-- Sidebar for Chat History -->
+        <div class="chat-history-panel">
+            <h2>Chat History</h2>
+            <div id="chat-sidebar-controls" class="chat-sidebar-controls">
+    <button id="new-chat-button">+ New Chat</button>
+    <div id="chat-list" class="chat-list">
+        <!-- Dynamically loaded chat items will appear here -->
+    </div>
+</div>
+
+        </div>
+
+        <!-- Main Chat Panel -->
+        <div class="chat-main-panel">
+            <div class="app-header">
+                <h1>Email RAG Chat</h1>
+                <p>Your Smart Email Assistant</p>
+            </div>
+
+            <div class="chat-container">
+                <div id="chat-box" class="chat-box">
+                    <div class="bot-message">
+                        <div class="markdown-content">
+                            <h3>Welcome to Email RAG Chat!</h3>
+                            <p>Ask questions about your emails. Example queries:</p>
+                            <ul>
+                                <li>What emails did I get from Google last week?</li>
+                                <li>Summarize today's unread emails.</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="input-container">
+                    <input type="text" id="user-input" placeholder="Type your question here...">
+                    <button id="send-button">Send</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+</body>
+</html>
