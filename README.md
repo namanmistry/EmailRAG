@@ -48,10 +48,3 @@ Powered by **NVIDIA NIMs API**, this smart assistant unlocks deep retrieval-augm
 
 ---
 
-## 📸 Product Screenshot
-
-> Demonstrating the fully integrated chat and summary experience:
-
-![Screenshot](./screenshot.png)
-
----
