@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import { EventSourcePolyfill } from 'event-source-polyfill';
 
 const dummySummaries = [
   { subject: 'Security Alert', summary: 'New sign-in detected from Chrome on Windows.' },
@@ -13,6 +14,18 @@ function stripHtml(html) {
 }
 
 function App() {
+    const CATEGORY_ORDER = {
+    urgent: 1,
+    important: 2,
+    promotion: 3,
+    personal: 4,
+    other: 5
+  };
+
+  const [summaries, setSummaries] = useState([]);
+  const [summarizationStarted, setSummarizationStarted] = useState(false);
+
+  const [progress, setProgress] = useState('');
   const [messages, setMessages] = useState([]);
   const [isTyping, setIsTyping] = useState(false);
   const [input, setInput] = useState('');
@@ -36,7 +49,8 @@ function App() {
     setIsTyping(true);
 
     try {
-      const res = await fetch(`/api/query?question=${encodeURIComponent(input)}`);
+      const res = await fetch(`http://127.0.0.1:5000/api/query?question=${encodeURIComponent(input)}`);
+
       const data = await res.json();
       const reply = data.error ? `❌ ${data.error}` : data.answer;
 
@@ -64,9 +78,57 @@ function App() {
   };
 
   const handleIndexing = () => {
-    console.log('Starting indexing with', { email, password, apiKey });
-    // Replace with your indexing logic
+  const params = new URLSearchParams({
+    email,
+    password,
+    nvidia_api_key: apiKey,
+  });
+
+  const eventSource = new EventSource(`http://127.0.0.1:5000/api/index?${params.toString()}`);
+
+  eventSource.onmessage = (event) => {
+    const step = event.data.trim();
+    if (step === 'collecting') setProgress("📥 Collecting emails...");
+    else if (step === 'storing') setProgress("🧹 Cleaning & storing...");
+    else if (step === 'indexing') setProgress("📦 Creating vector store...");
+    else if (step === 'done') {
+      setProgress("✅ Indexing complete!");
+      eventSource.close();
+      startSummarization(); // ⬅️ trigger next step
+    } else if (step.startsWith("error:")) {
+      setProgress("❌ " + step.slice(6));
+      eventSource.close();
+    }
   };
+
+  eventSource.onerror = () => {
+    setProgress("❌ Failed to connect to server.");
+    eventSource.close();
+  };
+};
+const startSummarization = async () => {
+  setProgress("🧠 Summarizing emails...");
+
+  try {
+    const res = await fetch("http://127.0.0.1:5000/api/summarize", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, password })
+    });
+    console.log("Response:", res);
+    const data = await res.json();
+    console.log("Data:", data);
+    if (data.status === "success") {
+      setSummaries(data.processed);
+      setProgress(`✅ Summarized ${data.processed.length} emails`);
+    } else {
+      setProgress("❌ " + data.message);
+    }
+  } catch (err) {
+    setProgress("❌ Failed to summarize emails.");
+  }
+};
+
 
   const toggleSources = (id) => {
     setSourcesMap((prev) => ({
@@ -102,6 +164,12 @@ function App() {
           onChange={(e) => setApiKey(e.target.value)}
           style={styles.inputField}
         />
+        {progress && (
+          <div style={{ color: 'lightgreen', marginBottom: '10px', fontSize: '12px' }}>
+            {progress}
+          </div>
+        )}
+
         <button style={styles.navButton} onClick={handleIndexing}>Start Indexing</button>
 
         {/* New Chat Button */}
@@ -177,14 +245,31 @@ function App() {
             </div>
           </>
         ) : (
-          <div style={styles.summaryContainer}>
-            <h1 style={styles.title}>📝 Email Summaries</h1>
-            {dummySummaries.map((item, idx) => (
+<div style={styles.summaryContainer}>
+  <h1 style={styles.title}>📝 Email Summaries</h1>
+  {summaries.length === 0 ? (
+    <div style={{ padding: '10px', fontStyle: 'italic' }}>No summaries available yet.</div>
+  ) : (
+    Object.keys(CATEGORY_ORDER)
+      .filter((cat) => summaries.some((s) => s.category === cat))
+      .map((cat) => (
+        <div key={cat} style={{ marginBottom: '20px' }}>
+          <h3 style={{ color: '#fefefe', borderBottom: '1px solid #444', paddingBottom: '5px' }}>
+            {cat.toUpperCase()}
+          </h3>
+          {summaries
+            .filter((s) => s.category === cat)
+            .map((item, idx) => (
               <div key={idx} style={styles.summaryBox}>
-                <strong>{item.subject}</strong>: {item.summary}
+                <div>{item.summary}</div>
               </div>
             ))}
-          </div>
+        </div>
+      ))
+  )}
+</div>
+
+
         )}
       </div>
     </div>

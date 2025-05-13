@@ -1,97 +1,16 @@
-# from flask import Flask, request, jsonify, render_template, Response, stream_with_context
-# import sqlite3
-# import traceback
-# import sys
-# import uuid
-# from datetime import datetime
-
-# app = Flask(__name__)
-# print("Starting Flask app...")
-# from models import emailrag_engine
-
-
-# # ----------------- Database Setup -----------------
-# DB_FILE = 'chat_history.db'
-
-# def init_db():
-#     with sqlite3.connect(DB_FILE) as conn:
-#         cursor = conn.cursor()
-#         cursor.execute('''
-#             CREATE TABLE IF NOT EXISTS chats (
-#                 chat_id TEXT,
-#                 role TEXT,
-#                 message TEXT,
-#                 timestamp TEXT
-#             )
-#         ''')
-#         conn.commit()
-
-# init_db()
-
-# def save_message(chat_id, role, message):
-#     with sqlite3.connect(DB_FILE) as conn:
-#         cursor = conn.cursor()
-#         cursor.execute('INSERT INTO chats (chat_id, role, message, timestamp) VALUES (?, ?, ?, ?)',
-#                        (chat_id, role, message, datetime.utcnow().isoformat()))
-#         conn.commit()
-
-# def get_chat_history(chat_id):
-#     with sqlite3.connect(DB_FILE) as conn:
-#         cursor = conn.cursor()
-#         cursor.execute('SELECT role, message FROM chats WHERE chat_id = ? ORDER BY timestamp', (chat_id,))
-#         return cursor.fetchall()
-
-# # ----------------- Flask Routes -----------------
-
-# @app.route('/')
-# def index():
-#     return render_template('index.html')
-
-# @app.route('/api/history/<chat_id>')
-# def chat_history(chat_id):
-#     messages = get_chat_history(chat_id)
-#     return jsonify([{'role': role, 'message': message} for role, message in messages])
-
-# @app.route('/api/new_chat')
-# def new_chat():
-#     new_chat_id = str(uuid.uuid4())
-#     return jsonify({'chat_id': new_chat_id})
-
-# @app.route('/api/query/<chat_id>')
-# def query(chat_id):
-#     question = request.args.get('question', '')
-#     if not question:
-#         return jsonify({'error': 'No question provided.'}), 400
-
-#     # Save user message
-#     save_message(chat_id, 'user', question)
-
-#     ai_response_collector = []
-
-#     def generate():
-#         for token in emailrag_engine.process_query(question):
-#             ai_response_collector.append(token)
-#             yield f"data: {token}\n\n"
-#         # Save the complete AI response after streaming is done
-#         ai_response = ''.join(ai_response_collector)
-#         save_message(chat_id, 'assistant', ai_response)
-#         yield "data: [DONE]\n\n"
-
-#     response = Response(stream_with_context(generate()), mimetype='text/event-stream')
-#     response.headers['Cache-Control'] = 'no-cache'
-#     response.headers['X-Accel-Buffering'] = 'no'
-#     response.headers['Connection'] = 'keep-alive'
-#     return response
-
-# if __name__ == '__main__':
-#     print("Flask app starting at http://127.0.0.1:5000")
-#     app.run(debug=True, threaded=True)
 from flask import Flask, request, Response, stream_with_context
 from models import emailrag_engine  # Your AI engine
 from flask import request, jsonify
+from models.indexing import Indexing
+from langchain_community.embeddings import HuggingFaceEmbeddings
+from flask_cors import CORS
+from models.email_summarizer import EmailSummarizer
 app = Flask(__name__)
+CORS(app)
+CORS(app, resources={r"/api/*": {"origins": "http://localhost:3000"}})
+nvidia_api_key = ""
 print("Starting Flask app...")
-
+embedding_model = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
 @app.route('/api/query')
 def query():
     question = request.args.get('question', '')
@@ -99,8 +18,53 @@ def query():
         return jsonify({"error": "No question provided."}), 400
 
     # Call your engine and return the result as plain text or JSON
-    answer, sources = emailrag_engine.process_query(question)
+    email_rag_engine = emailrag_engine.EmailRAGEngine(embedding_model=embedding_model)
+    answer, sources = email_rag_engine.process_query(question, api_key=nvidia_api_key)
     return jsonify({"answer": answer, "sources": sources})
+
+
+@app.route('/api/index', methods=['GET'])
+def index_emails():
+    global nvidia_api_key
+    email_id = request.args.get('email')
+    password = request.args.get('password')
+    nvidia_api_key = request.args.get('nvidia_api_key')
+    print("route called")
+    def generate():
+        try:
+            yield 'data: collecting\n\n'
+            indexer = Indexing()
+            indexer.login_email(email_id, password)
+            emails = indexer.fetch_emails()
+
+            yield 'data: storing\n\n'
+            chunked = indexer.chunk_email(emails)
+
+            yield 'data: indexing\n\n'
+            indexer.create_vector_store(chunked, embedding_model)
+
+            yield 'data: done\n\n'
+        except Exception as e:
+            yield f'data: error: {str(e)}\n\n'
+
+    return Response(stream_with_context(generate()), mimetype='text/event-stream')
+
+@app.route('/api/summarize', methods=['POST'])
+def summarize_emails():
+    data = request.get_json()
+    email_id = data.get('email')
+    password = data.get('password')
+
+    if not email_id or not password:
+        return jsonify({"error": "Missing email or password."}), 400
+
+    try:
+        summarizer = EmailSummarizer(email_id, password)
+        results = summarizer.process_uncategorized_emails(nvidia_api_key=nvidia_api_key)
+        print("Summarization results:", results)
+        return jsonify({"status": "success", "processed": results})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 if __name__ == '__main__':
     print("Flask app starting at http://127.0.0.1:5000")

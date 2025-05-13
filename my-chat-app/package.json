@@ -3,20 +3,16 @@
   "version": "0.1.0",
   "private": true,
   "dependencies": {
-    "@chatscope/chat-ui-kit-react": "^2.0.3",
-    "@chatscope/chat-ui-kit-styles": "^1.4.0",
     "@testing-library/dom": "^10.4.0",
     "@testing-library/jest-dom": "^6.6.3",
     "@testing-library/react": "^16.3.0",
     "@testing-library/user-event": "^13.5.0",
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1",
+    "event-source-polyfill": "^1.0.31",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
     "react-markdown": "^10.1.0",
     "react-scripts": "5.0.1",
-    "rehype-katex": "^7.0.1",
     "remark-gfm": "^4.0.1",
-    "remark-math": "^6.0.0",
-    "sanitize-html": "^2.16.0",
     "web-vitals": "^2.1.4"
   },
   "scripts": {
